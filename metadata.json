@@ -1,0 +1,8 @@
+{
+  "name": "POZO AI TOOL ",
+  "description": "Una navaja suiza integral impulsada por IA para urólogos. Incluye documentación clínica, resúmenes de investigación mediante Search Grounding, análisis de imágenes diagnósticas, generación de imágenes para educación del paciente y calculadoras clínicas.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

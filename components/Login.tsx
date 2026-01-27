@@ -1,0 +1,96 @@
+
+import React, { useState } from 'react';
+import { Activity, Lock, Mail, ArrowRight, ShieldCheck } from 'lucide-react';
+
+interface LoginProps {
+    onLogin: (email: string) => void;
+}
+
+const Login: React.FC<LoginProps> = ({ onLogin }) => {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        // Simulate API call
+        setTimeout(() => {
+            onLogin(email || 'dr.urologo@hospital.com');
+            setLoading(false);
+        }, 1500);
+    };
+
+    return (
+        <div className="min-h-screen w-full flex items-center justify-center bg-slate-900 relative overflow-hidden">
+             {/* Background Effects */}
+             <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1551076805-e1869033e561?auto=format&fit=crop&q=80')] bg-cover bg-center opacity-20"></div>
+             <div className="absolute inset-0 bg-gradient-to-tr from-slate-900 via-slate-900/90 to-teal-900/40"></div>
+             
+             <div className="relative z-10 w-full max-w-md p-8">
+                 <div className="text-center mb-10 animate-slide-up">
+                     <div className="w-20 h-20 bg-teal-500 rounded-2xl mx-auto flex items-center justify-center shadow-[0_0_40px_rgba(20,184,166,0.5)] mb-6 transform rotate-3">
+                        <Activity size={40} className="text-white" />
+                     </div>
+                     <h1 className="text-4xl font-bold text-white tracking-tight mb-2">UroGenius AI</h1>
+                     <p className="text-slate-400">Plataforma Integral de Urología Inteligente</p>
+                 </div>
+
+                 <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8 shadow-2xl animate-slide-up delay-100">
+                     <form onSubmit={handleSubmit} className="space-y-6">
+                         <div className="space-y-2">
+                             <label className="text-sm font-medium text-slate-300 ml-1">Correo Institucional</label>
+                             <div className="relative">
+                                 <Mail className="absolute left-4 top-3.5 text-slate-400" size={18} />
+                                 <input 
+                                    type="email" 
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    placeholder="dr.usuario@hospital.com"
+                                    className="w-full bg-slate-900/50 border border-slate-700 rounded-xl py-3 pl-12 text-white placeholder:text-slate-600 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all"
+                                 />
+                             </div>
+                         </div>
+                         
+                         <div className="space-y-2">
+                             <label className="text-sm font-medium text-slate-300 ml-1">Contraseña</label>
+                             <div className="relative">
+                                 <Lock className="absolute left-4 top-3.5 text-slate-400" size={18} />
+                                 <input 
+                                    type="password" 
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    placeholder="••••••••"
+                                    className="w-full bg-slate-900/50 border border-slate-700 rounded-xl py-3 pl-12 text-white placeholder:text-slate-600 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all"
+                                 />
+                             </div>
+                         </div>
+
+                         <button 
+                            type="submit"
+                            disabled={loading}
+                            className="w-full bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-teal-900/50 transition-all transform hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
+                         >
+                            {loading ? (
+                                <span className="flex items-center gap-2"><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> Iniciando Sesión...</span>
+                            ) : (
+                                <>Acceder al Panel <ArrowRight size={18} /></>
+                            )}
+                         </button>
+                     </form>
+                     
+                     <div className="mt-6 flex items-center justify-center gap-2 text-xs text-slate-500">
+                        <ShieldCheck size={14} />
+                        <span>Conexión Segura E2E</span>
+                     </div>
+                 </div>
+                 
+                 <p className="text-center text-slate-500 text-xs mt-8">
+                     © 2025 UroGenius Medical Suite. Acceso restringido a personal autorizado.
+                 </p>
+             </div>
+        </div>
+    );
+};
+
+export default Login;
