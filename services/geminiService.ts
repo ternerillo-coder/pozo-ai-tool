@@ -220,39 +220,70 @@ export const analyzeMedicalImage = async (base64Image: string, prompt: string): 
 
 // --- 4. Teaching Content ---
 
-export const generateTeachingContent = async (toolType: string, context: string): Promise<string> => {
+export const generateTeachingContent = async (
+  toolType: string, 
+  context: string, 
+  fileData?: { data: string, mimeType: string }
+): Promise<string> => {
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    let systemInstruction = "Eres un Profesor Titular de Urología. FECHA: Diciembre 2025. Genera contenido educativo de alta calidad basado en EAU Guidelines 2025. ";
+    let systemInstruction = "Eres un Profesor Titular de Urología y Diseñador Instruccional Senior. FECHA: Diciembre 2025. ";
     
     switch (toolType) {
         case 'ABSTRACT': systemInstruction += "Genera un Abstract estructurado para congreso."; break;
         case 'SESSION': systemInstruction += "Crea un esquema para Sesión Clínica con bibliografía reciente."; break;
         case 'EXAM': systemInstruction += "Crea preguntas tipo test basadas en guías."; break;
-        case 'CLINICAL_CASE': systemInstruction += "Genera un CASO CLÍNICO DESAFIANTE sin revelar diagnóstico final."; break;
+        case 'CLINICAL_CASE': systemInstruction += "Genera un CASO CLÍNICO DESAFIANTE. Empieza presentando el caso y detente antes de dar la solución."; break;
         case 'PRESENTATION': 
             systemInstruction += `
-            ACTÚA COMO UN DISEÑADOR INSTRUCCIONAL MÉDICO EXPERTO.
+            ACTÚA COMO UN EXPERTO PONENTE EN CONGRESOS INTERNACIONALES DE UROLOGÍA.
+            SI SE ADJUNTA UN ARCHIVO, RESÚMELO Y TRANSFÓRMALO EN DIAPOSITIVAS PROFESIONALES.
             
-            Tu objetivo es crear un GUION COMPLETO para una presentación (PowerPoint) de alto impacto.
-            Estructura la respuesta Diapositiva por Diapositiva.
+            FORMATO OBLIGATORIO PARA CADA DIAPOSITIVA (Usa exactamente estas etiquetas para permitir el parseo):
+            [SLIDE]
+            [TITLE]: Título de la diapositiva
+            [CONTENT]: 
+            - Bullet 1
+            - Bullet 2
+            - Bullet 3
+            [VISUAL]: Descripción detallada de la imagen, tabla o gráfico sugerido.
+            [NOTES]: Guion completo del orador.
+            [DESIGN]: Sugerencias de colores, transiciones y layout.
+            [PEARL]: Mensaje clave o frase de impacto.
+            [BIBLIO]: Referencias Vancouver (EAU 2025).
             
-            Para CADA diapositiva, debes incluir:
-            1. TÍTULO: Claro y conciso.
-            2. PUNTOS CLAVE (Bullets): Texto que iría en la pantalla (máximo 5 bullets).
-            3. GUION DEL ORADOR (Script): Lo que el ponente debe decir (narrativa fluida y profesional).
-            4. SUGERENCIA VISUAL: Describe detalladamente qué imagen, gráfico o diseño debe tener la diapositiva (ej. "Gráfico de barras comparando X e Y", "Imagen de TC mostrando...").
+            REGLA DE EXTENSIÓN:
+            - '10 min': 6-8 diapositivas.
+            - '20 min': 12-18 diapositivas.
+            - '45-60 min': 30-45 diapositivas (Profundización máxima).
             
-            ADAPTA EL TONO al "Estilo" y "Audiencia" solicitados en el prompt.
+            Genera un contenido de ALTA DENSIDAD CIENTÍFICA pero visualmente equilibrado.
             `; 
             break;
         default: systemInstruction += "Genera contenido educativo médico.";
     }
 
+    const contents: any = [];
+    
+    if (fileData) {
+        const base64Data = fileData.data.includes(',') ? fileData.data.split(',')[1] : fileData.data;
+        contents.push({
+            inlineData: {
+                data: base64Data,
+                mimeType: fileData.mimeType
+            }
+        });
+    }
+    
+    contents.push({ text: context });
+
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
-      contents: context,
-      config: { systemInstruction, temperature: 0.5 }
+      contents: { parts: contents },
+      config: { 
+        systemInstruction, 
+        temperature: 0.6,
+      }
     });
 
     return response.text || "Error generando contenido.";
@@ -313,9 +344,9 @@ export const generateAnatomyImage = async (prompt: string, size: '1K' | '2K' | '
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-image-preview',
+      model: 'gemini-2.5-flash-image',
       contents: { parts: [{ text: `Medical illustration: ${prompt}. Anatomically correct, educational style.` }] },
-      config: { imageConfig: { imageSize: size, aspectRatio: "1:1" } },
+      config: { imageConfig: { aspectRatio: "1:1" } },
     });
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
@@ -327,19 +358,22 @@ export const generateAnatomyImage = async (prompt: string, size: '1K' | '2K' | '
   }
 };
 
-export const generateVisualContent = async (topic: string, format: string, aspectRatio: string = "1:1"): Promise<string | null> => {
+export const generateVisualContent = async (topic: string, format: string, aspectRatio: string = "1:1", stylePreset: string = ""): Promise<string | null> => {
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     let promptDetail = format === 'Infografía' 
         ? `Medical Infographic about "${topic}". Clean, informative layout, medical blue palette. Text must be legible.` 
         : `Medical Decision Flowchart/Algorithm about "${topic}". Professional, white background, high contrast text.`;
 
+    if (stylePreset && stylePreset !== 'Ninguno') {
+        promptDetail += ` Visual Style: ${stylePreset}.`;
+    }
+
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-image-preview',
+      model: 'gemini-2.5-flash-image',
       contents: { parts: [{ text: promptDetail }] },
       config: { 
         imageConfig: { 
-          imageSize: "1K", 
           aspectRatio: (aspectRatio as any) || "1:1" 
         } 
       },
@@ -371,9 +405,9 @@ export const generateResearchMap = async (topic: string): Promise<string | null>
         `;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-image-preview',
+            model: 'gemini-2.5-flash-image',
             contents: { parts: [{ text: prompt }] },
-            config: { imageConfig: { imageSize: "1K", aspectRatio: "16:9" } },
+            config: { imageConfig: { aspectRatio: "16:9" } },
         });
 
         for (const part of response.candidates?.[0]?.content?.parts || []) {

@@ -1,7 +1,8 @@
-
 import React, { useState, useRef } from 'react';
 import { generateVisualContent, editMedicalImage } from '../services/geminiService';
-import { Workflow, Loader2, Download, Image as ImageIcon, Layout, AlertTriangle, Wand2, Maximize, Smartphone, Square, Upload, ImagePlus, RefreshCw, PenTool } from 'lucide-react';
+import { Workflow, Loader2, Download, Image as ImageIcon, Layout, AlertTriangle, Wand2, Maximize, Smartphone, Square, Upload, ImagePlus, RefreshCw, PenTool, History, SplitSquareHorizontal, Crop, Check, X, Zap, Palette } from 'lucide-react';
+import ReactCrop, { type Crop as CropType } from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
 
 const VisualStudio: React.FC = () => {
     const [mode, setMode] = useState<'CREATE' | 'EDIT'>('CREATE');
@@ -10,6 +11,7 @@ const VisualStudio: React.FC = () => {
     const [topic, setTopic] = useState('');
     const [format, setFormat] = useState('Algoritmo de Decisión');
     const [aspectRatio, setAspectRatio] = useState('16:9');
+    const [stylePreset, setStylePreset] = useState('Ninguno');
     
     // Edit Mode States
     const [sourceImage, setSourceImage] = useState<string | null>(null);
@@ -21,16 +23,70 @@ const VisualStudio: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // History State
+    const [history, setHistory] = useState<{url: string, prompt: string, mode: string}[]>([]);
+    const [showHistory, setShowHistory] = useState(false);
+
+    // Crop States
+    const [crop, setCrop] = useState<CropType>();
+    const [isCropping, setIsCropping] = useState(false);
+    const imgRef = useRef<HTMLImageElement>(null);
+
+    const quickPrompts = [
+        { label: "Manejo HPB", topic: "Algoritmo de manejo de Hiperplasia Prostática Benigna según EAU", format: "Algoritmo de Decisión" },
+        { label: "Anatomía Próstata", topic: "Anatomía zonal de la próstata (McNeal)", format: "Esquema Anatómico" },
+        { label: "Prevención Litiasis", topic: "Medidas dietéticas para prevención de litiasis renal", format: "Infografía" }
+    ];
+
+    const styles = [
+        { id: 'Ninguno', label: 'Por Defecto' },
+        { id: 'Classic Medical Illustration (Netter style)', label: 'Ilustración Clásica' },
+        { id: 'Highly detailed 3D render, cinematic lighting', label: 'Render 3D' },
+        { id: 'Minimalist flat design, vector art', label: 'Minimalista' },
+        { id: 'Whiteboard sketch style, educational', label: 'Pizarra' }
+    ];
+
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
             const reader = new FileReader();
             reader.onloadend = () => {
                 setSourceImage(reader.result as string);
-                setResultImage(null); // Reset result when new image uploaded
+                setResultImage(null);
+                setIsCropping(true);
+                setCrop(undefined);
             };
             reader.readAsDataURL(file);
         }
+    };
+
+    const getCroppedImg = () => {
+        const image = imgRef.current;
+        if (!image || !crop || crop.width === 0 || crop.height === 0) {
+            setIsCropping(false);
+            return;
+        }
+        const canvas = document.createElement('canvas');
+        const scaleX = image.naturalWidth / image.width;
+        const scaleY = image.naturalHeight / image.height;
+        canvas.width = crop.width;
+        canvas.height = crop.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.drawImage(
+            image,
+            crop.x * scaleX,
+            crop.y * scaleY,
+            crop.width * scaleX,
+            crop.height * scaleY,
+            0,
+            0,
+            crop.width,
+            crop.height
+        );
+        const base64Image = canvas.toDataURL('image/jpeg');
+        setSourceImage(base64Image);
+        setIsCropping(false);
     };
 
     const handleGenerate = async (isRetry = false) => {
@@ -41,29 +97,12 @@ const VisualStudio: React.FC = () => {
         if (!isRetry) setError(null);
         setResultImage(null);
 
-        // Pre-emptive check for API Key
-        if (!isRetry && (window as any).aistudio && (window as any).aistudio.hasSelectedApiKey) {
-            const hasKey = await (window as any).aistudio.hasSelectedApiKey();
-            if (!hasKey) {
-                try {
-                    if ((window as any).aistudio.openSelectKey) {
-                        await (window as any).aistudio.openSelectKey();
-                    }
-                } catch (e) {
-                    setError("Se requiere clave API para generar imágenes.");
-                    setLoading(false);
-                    return;
-                }
-            }
-        }
-
         try {
             let img: string | null = null;
 
             if (mode === 'CREATE') {
-                img = await generateVisualContent(topic, format, aspectRatio);
+                img = await generateVisualContent(topic, format, aspectRatio, stylePreset);
             } else {
-                // Edit Mode
                 if (sourceImage) {
                     img = await editMedicalImage(sourceImage, editInstruction);
                 }
@@ -71,40 +110,14 @@ const VisualStudio: React.FC = () => {
 
             if (img) {
                 setResultImage(img);
+                setHistory(prev => [{ url: img!, prompt: mode === 'CREATE' ? topic : editInstruction, mode }, ...prev]);
             } else {
                 throw new Error("La IA no devolvió ninguna imagen.");
             }
 
         } catch (err: any) {
             console.error("Visual Generation Error:", err);
-            
-            // Robust error checking for 403 / Permission Denied
-            const errorMsg = err.message || err.toString() || JSON.stringify(err);
-            const isPermissionError = errorMsg.includes("403") || 
-                                      errorMsg.includes("PERMISSION_DENIED") || 
-                                      errorMsg.includes("permission");
-
-            if (isPermissionError) {
-                if (isRetry) {
-                     setError("Permiso denegado. Por favor, selecciona un proyecto de Google Cloud con facturación habilitada.");
-                     setLoading(false);
-                     return;
-                }
-
-                 try {
-                     if ((window as any).aistudio && (window as any).aistudio.openSelectKey) {
-                         await (window as any).aistudio.openSelectKey();
-                         await handleGenerate(true);
-                         return;
-                     } else {
-                         setError("Permiso denegado. Se requiere clave API válida.");
-                     }
-                 } catch (retryErr) {
-                     setError("No se pudo seleccionar la clave API. Inténtalo de nuevo.");
-                 }
-            } else {
-                setError("Error al procesar la imagen: " + (err.message || "Inténtalo de nuevo."));
-            }
+            setError("Error al procesar la imagen: " + (err.message || "Inténtalo de nuevo."));
         }
         setLoading(false);
     };
@@ -117,7 +130,7 @@ const VisualStudio: React.FC = () => {
     ];
 
     return (
-        <div className="p-6 max-w-6xl mx-auto animate-slide-up">
+        <div className="p-6 max-w-6xl mx-auto animate-slide-up relative">
             <div className="mb-8 flex flex-col md:flex-row justify-between items-end gap-4">
                 <div>
                     <h2 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
@@ -127,7 +140,6 @@ const VisualStudio: React.FC = () => {
                     <p className="text-slate-600">Suite de generación y edición de imagen médica con IA.</p>
                 </div>
                 
-                {/* Mode Switcher */}
                 <div className="flex bg-white p-1 rounded-xl border border-slate-200 shadow-sm">
                     <button
                         onClick={() => { setMode('CREATE'); setError(null); }}
@@ -149,21 +161,35 @@ const VisualStudio: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* LEFT COLUMN: Control Panel */}
                 <div className="lg:col-span-1 space-y-6">
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                         
                         {mode === 'CREATE' ? (
-                            /* --- CREATE MODE CONTROLS --- */
                             <div className="animate-fade-in space-y-6">
                                 <div>
-                                    <label className="block text-sm font-bold text-slate-900 mb-2">Patología / Tema Clínico</label>
+                                    <div className="flex justify-between items-end mb-2">
+                                        <label className="block text-sm font-bold text-slate-900">Patología / Tema Clínico</label>
+                                    </div>
+                                    <div className="mb-3 flex flex-wrap gap-2">
+                                        {quickPrompts.map(qp => (
+                                            <button key={qp.label} onClick={() => { setTopic(qp.topic); setFormat(qp.format); }} className="text-[10px] bg-teal-50 text-teal-700 px-2 py-1 rounded-full border border-teal-200 hover:bg-teal-100 flex items-center gap-1 transition-colors">
+                                                <Zap size={10} /> {qp.label}
+                                            </button>
+                                        ))}
+                                    </div>
                                     <textarea
                                         value={topic}
                                         onChange={(e) => setTopic(e.target.value)}
                                         placeholder="Ej. Algoritmo de manejo de Microhematuria según AUA 2025..."
-                                        className="w-full h-32 p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:outline-none resize-none text-sm"
+                                        className="w-full h-24 p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:outline-none resize-none text-sm"
                                     />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-900 mb-2 flex items-center gap-2"><Palette size={16}/> Estilo Visual</label>
+                                    <select value={stylePreset} onChange={e => setStylePreset(e.target.value)} className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none text-sm bg-white">
+                                        {styles.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                                    </select>
                                 </div>
 
                                 <div>
@@ -212,7 +238,6 @@ const VisualStudio: React.FC = () => {
                                 </div>
                             </div>
                         ) : (
-                            /* --- EDIT MODE CONTROLS --- */
                             <div className="animate-fade-in space-y-6">
                                 <div>
                                     <label className="block text-sm font-bold text-slate-900 mb-2">1. Subir Imagen Base</label>
@@ -231,12 +256,18 @@ const VisualStudio: React.FC = () => {
                                     ) : (
                                         <div className="relative rounded-xl overflow-hidden border border-slate-200 group">
                                             <img src={sourceImage} alt="Source" className="w-full h-48 object-cover" />
-                                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity gap-2">
+                                                <button 
+                                                    onClick={() => setIsCropping(true)}
+                                                    className="bg-white text-slate-900 px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-slate-100 w-36 justify-center"
+                                                >
+                                                    <Crop size={14} /> Recortar
+                                                </button>
                                                 <button 
                                                     onClick={() => fileInputRef.current?.click()}
-                                                    className="bg-white text-slate-900 px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-slate-100"
+                                                    className="bg-white text-slate-900 px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-slate-100 w-36 justify-center"
                                                 >
-                                                    <RefreshCw size={14} /> Cambiar Imagen
+                                                    <RefreshCw size={14} /> Cambiar
                                                 </button>
                                             </div>
                                         </div>
@@ -287,15 +318,11 @@ const VisualStudio: React.FC = () => {
 
                     <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-xs text-blue-800">
                         <strong>Nota Técnica:</strong> 
-                        {mode === 'CREATE' 
-                            ? " Se utiliza Gemini 3 Pro Image. Soporta 1K de resolución." 
-                            : " Se utiliza Gemini 2.5 Flash Image para edición rápida."}
+                        Se utiliza Gemini 2.5 Flash Image para generación y edición rápida.
                     </div>
                 </div>
 
-                {/* RIGHT COLUMN: Canvas / Result Area */}
                 <div className="lg:col-span-2 bg-slate-100 rounded-2xl border border-slate-200 flex items-center justify-center min-h-[500px] relative overflow-hidden shadow-inner group">
-                    {/* Grid Pattern Background */}
                     <div className="absolute inset-0 opacity-10" style={{backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', backgroundSize: '20px 20px'}}></div>
 
                     {loading ? (
@@ -307,11 +334,25 @@ const VisualStudio: React.FC = () => {
                             <p className="text-slate-500 text-sm mt-1">{mode === 'CREATE' ? 'Aplicando guías clínicas al diseño' : 'Aplicando transformación visual'}</p>
                         </div>
                     ) : resultImage ? (
-                        <div className="relative w-full h-full flex items-center justify-center p-4 animate-scale-in">
-                            <img src={resultImage} alt="Generated Medical Visual" className="max-w-full max-h-full object-contain rounded-lg shadow-2xl bg-white" />
+                        <div className="relative w-full h-full flex flex-col p-4 animate-scale-in z-10">
+                            {mode === 'EDIT' && sourceImage ? (
+                                <div className="flex flex-col md:flex-row gap-4 w-full h-full items-center justify-center">
+                                    <div className="flex-1 flex flex-col items-center justify-center w-full h-full">
+                                        <span className="bg-slate-800 text-white text-xs px-3 py-1 rounded-full mb-2 shadow-md flex items-center gap-1"><SplitSquareHorizontal size={12}/> Original</span>
+                                        <img src={sourceImage} className="max-w-full max-h-[40vh] md:max-h-[60vh] object-contain rounded-lg shadow-md border border-slate-200 bg-white" />
+                                    </div>
+                                    <div className="flex-1 flex flex-col items-center justify-center w-full h-full">
+                                        <span className="bg-purple-600 text-white text-xs px-3 py-1 rounded-full mb-2 shadow-md flex items-center gap-1"><Wand2 size={12}/> Editada</span>
+                                        <img src={resultImage} className="max-w-full max-h-[40vh] md:max-h-[60vh] object-contain rounded-lg shadow-2xl border-2 border-purple-500 bg-white" />
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="flex-1 flex items-center justify-center">
+                                    <img src={resultImage} alt="Generated Medical Visual" className="max-w-full max-h-full object-contain rounded-lg shadow-2xl bg-white" />
+                                </div>
+                            )}
                             
-                            {/* Actions Overlay */}
-                            <div className="absolute bottom-6 flex gap-3 opacity-0 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+                            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                                 <a 
                                     href={resultImage} 
                                     download={`uro-visual-${Date.now()}.png`}
@@ -334,6 +375,66 @@ const VisualStudio: React.FC = () => {
                     )}
                 </div>
             </div>
+
+            {/* Cropping Modal */}
+            {isCropping && sourceImage && (
+                <div className="fixed inset-0 z-50 bg-black/80 flex flex-col items-center justify-center p-6 animate-fade-in">
+                    <div className="bg-white p-6 rounded-2xl w-full max-w-3xl flex flex-col items-center shadow-2xl">
+                        <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-slate-800"><Crop size={24} className="text-teal-600"/> Recortar Imagen</h3>
+                        <div className="max-h-[60vh] overflow-auto border border-slate-200 rounded-lg mb-6 bg-slate-50 w-full flex justify-center p-4">
+                            <ReactCrop crop={crop} onChange={c => setCrop(c)}>
+                                <img ref={imgRef} src={sourceImage} alt="Crop me" className="max-w-full max-h-[50vh] object-contain" />
+                            </ReactCrop>
+                        </div>
+                        <div className="flex gap-4 w-full justify-end">
+                            <button onClick={() => setIsCropping(false)} className="px-6 py-2.5 text-slate-600 hover:bg-slate-100 rounded-xl font-bold transition-colors">Cancelar</button>
+                            <button onClick={getCroppedImg} className="px-6 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold flex items-center gap-2 shadow-lg transition-colors"><Check size={18}/> Aplicar Recorte</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* History Gallery Toggle */}
+            <button 
+                onClick={() => setShowHistory(!showHistory)} 
+                className="fixed right-6 bottom-20 bg-slate-900 text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-transform z-40 flex items-center gap-2"
+                title="Historial de Sesión"
+            >
+                <History size={24} />
+                {history.length > 0 && <span className="absolute -top-2 -right-2 bg-teal-500 text-white text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full border-2 border-white">{history.length}</span>}
+            </button>
+
+            {/* History Panel */}
+            {showHistory && (
+                <div className="fixed right-6 bottom-40 w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 z-40 overflow-hidden animate-scale-in origin-bottom-right flex flex-col max-h-[60vh]">
+                    <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                        <h3 className="font-bold text-slate-800 flex items-center gap-2"><History size={18} className="text-teal-600"/> Historial de Sesión</h3>
+                        <button onClick={() => setShowHistory(false)} className="text-slate-400 hover:text-slate-600 bg-white rounded-full p-1 shadow-sm"><X size={16}/></button>
+                    </div>
+                    <div className="p-4 overflow-y-auto flex-1 space-y-4 custom-scrollbar">
+                        {history.length === 0 ? (
+                            <div className="text-center py-8">
+                                <History className="w-12 h-12 text-slate-200 mx-auto mb-2" />
+                                <p className="text-sm text-slate-500">No hay imágenes generadas aún.</p>
+                            </div>
+                        ) : (
+                            history.map((item, i) => (
+                                <div key={i} className="bg-white rounded-xl p-2 border border-slate-200 shadow-sm group relative">
+                                    <img src={item.url} className="w-full h-32 object-cover rounded-lg mb-2 border border-slate-100" />
+                                    <div className="flex items-center gap-1 mb-1">
+                                        <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase ${item.mode === 'CREATE' ? 'bg-teal-100 text-teal-700' : 'bg-purple-100 text-purple-700'}`}>{item.mode}</span>
+                                    </div>
+                                    <p className="text-xs text-slate-600 line-clamp-2 font-medium">{item.prompt}</p>
+                                    <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl flex items-center justify-center gap-3 backdrop-blur-sm">
+                                        <button onClick={() => { setResultImage(item.url); setMode(item.mode as any); setShowHistory(false); }} className="bg-white p-2.5 rounded-xl hover:bg-teal-50 text-teal-700 shadow-lg hover:scale-110 transition-transform" title="Ver en lienzo"><Maximize size={18}/></button>
+                                        <a href={item.url} download={`history-${i}.png`} className="bg-white p-2.5 rounded-xl hover:bg-teal-50 text-teal-700 shadow-lg hover:scale-110 transition-transform" title="Descargar"><Download size={18}/></a>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

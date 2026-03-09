@@ -84,7 +84,15 @@ const Scheduler: React.FC = () => {
   useEffect(() => {
       const handleStorageUpdate = () => {
           const updated = StorageService.getAppointments();
-          if (updated) setReminders(updated);
+          if (updated) {
+              setReminders(prev => {
+                  // Only update if the data actually changed to prevent infinite loops
+                  if (JSON.stringify(prev) === JSON.stringify(updated)) {
+                      return prev;
+                  }
+                  return updated;
+              });
+          }
       };
       window.addEventListener('storage-update', handleStorageUpdate);
       return () => window.removeEventListener('storage-update', handleStorageUpdate);

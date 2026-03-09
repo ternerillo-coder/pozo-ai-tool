@@ -115,10 +115,10 @@ const Dashboard: React.FC<DashboardProps> = ({ setView }) => {
                     <h1 className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-200 to-slate-400 tracking-tight">
                         UroGenius <span className="font-light text-teal-400">Pro</span>
                     </h1>
-                    <p className="text-slate-400 font-medium mt-2 flex items-center gap-2 text-sm uppercase tracking-widest">
+                    <div className="text-slate-400 font-medium mt-2 flex items-center gap-2 text-sm uppercase tracking-widest">
                         <div className="w-2 h-2 rounded-full bg-teal-500 animate-pulse"></div>
                         Centro de Inteligencia Urológica
-                    </p>
+                    </div>
                 </div>
                 
                 <div className="bg-slate-900/40 backdrop-blur-xl border border-white/5 shadow-2xl rounded-full p-2 px-6 flex items-center gap-5 ring-1 ring-white/5">
@@ -163,7 +163,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setView }) => {
                             <button onClick={() => setView(View.LIVE_CONSULT)} className="bg-slate-800/50 hover:bg-slate-700/50 text-white py-3 px-4 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 border border-white/5 transition-all">
                                 <Mic size={18} className="text-teal-400" /> <span className="text-[10px] uppercase tracking-wide">Voz</span>
                             </button>
-                            <button onClick={() => setView(View.CHAT)} className="bg-slate-800/50 hover:bg-slate-700/50 text-white py-3 px-4 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 border border-white/5 transition-all">
+                            <button onClick={() => setView(View.AI_CENTER)} className="bg-slate-800/50 hover:bg-slate-700/50 text-white py-3 px-4 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 border border-white/5 transition-all">
                                 <MessageSquare size={18} className="text-blue-400" /> <span className="text-[10px] uppercase tracking-wide">Chat</span>
                             </button>
                         </div>
@@ -249,24 +249,24 @@ const Dashboard: React.FC<DashboardProps> = ({ setView }) => {
                 </div>
 
                 {/* 6. Pearl (Expanded) */}
-                <div className="md:col-span-5 row-span-1 bg-gradient-to-br from-yellow-600 to-amber-700 rounded-[2.5rem] p-6 text-white shadow-lg relative overflow-hidden flex flex-col justify-between group cursor-pointer hover:scale-[1.02] transition-transform">
-                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/20 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2"></div>
+                <div className="md:col-span-5 row-span-1 bg-slate-900/60 backdrop-blur-xl border border-white/5 rounded-[2.5rem] p-6 shadow-lg relative overflow-hidden flex flex-col justify-between group cursor-pointer hover:scale-[1.02] transition-transform">
+                     <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2"></div>
                      <div className="relative z-10">
                          <div className="flex justify-between items-start mb-2">
-                             <div className="bg-white/20 p-2 rounded-xl backdrop-blur-sm"><Lightbulb size={20} className="text-white fill-white"/></div>
-                             <span className="text-[10px] font-bold uppercase tracking-wider bg-black/20 px-2 py-0.5 rounded-full">Tip del Día</span>
+                             <div className="bg-yellow-500/20 p-2 rounded-xl backdrop-blur-sm"><Lightbulb size={20} className="text-yellow-400 fill-yellow-400/50"/></div>
+                             <span className="text-[10px] font-bold uppercase tracking-wider bg-yellow-500/10 text-yellow-400 px-2 py-0.5 rounded-full border border-yellow-500/20">Tip del Día</span>
                          </div>
-                         <p className="text-sm font-bold leading-relaxed mt-2 text-white/95 drop-shadow-sm">"{pearl}"</p>
+                         <p className="text-sm font-bold leading-relaxed mt-2 text-slate-200 drop-shadow-sm">"{pearl}"</p>
                      </div>
                 </div>
 
                 {/* 7. Utility Strip */}
                 <div className="md:col-span-12 grid grid-cols-2 md:grid-cols-4 gap-4 pb-6">
                     {[
-                        { label: 'Evidence AI', icon: Scale, color: 'text-indigo-400', bg: 'bg-indigo-500/10', border: 'border-indigo-500/20', view: View.EVIDENCE, desc: 'Buscador Clínico' },
+                        { label: 'Centro de IA', icon: Scale, color: 'text-indigo-400', bg: 'bg-indigo-500/10', border: 'border-indigo-500/20', view: View.AI_CENTER, desc: 'Buscador & Chat' },
                         { label: 'Calculadoras', icon: Calculator, color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/20', view: View.CALCULATORS, desc: 'Scores Clínicos' },
                         { label: 'Diagnóstico IA', icon: TrendingUp, color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/20', view: View.DIAGNOSTICS, desc: 'Visión Artificial' },
-                        { label: 'Chat Experto', icon: MessageSquare, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', view: View.CHAT, desc: 'Consultas GPT-4' },
+                        { label: 'Investigación', icon: Search, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', view: View.RESEARCH, desc: 'Búsqueda Avanzada' },
                     ].map((item, i) => {
                         const Icon = item.icon;
                         return (

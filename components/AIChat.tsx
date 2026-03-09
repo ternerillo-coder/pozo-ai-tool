@@ -34,7 +34,7 @@ const AIChat: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-2rem)] max-w-4xl mx-auto p-4">
+    <div className="flex flex-col h-full max-w-4xl mx-auto p-4">
       <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-y-auto p-6 space-y-6">
         {messages.map((msg, idx) => (
           <div key={idx} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>

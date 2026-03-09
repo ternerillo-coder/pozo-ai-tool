@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+
+import React, { useState, useRef } from 'react';
 import { generateTeachingContent, evaluateClinicalCase } from '../services/geminiService';
+import PptxGenJS from 'pptxgenjs';
 import { 
   BookOpen, 
   Presentation, 
@@ -14,7 +16,11 @@ import {
   Stethoscope,
   Send,
   GraduationCap,
-  Projector
+  Projector,
+  FileUp,
+  X,
+  FileCheck,
+  Download
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
@@ -39,8 +45,12 @@ const TeachingHub: React.FC = () => {
   const [presDuration, setPresDuration] = useState('20 min');
   const [presAudience, setPresAudience] = useState('Residentes');
   const [presStyle, setPresStyle] = useState('Científico y Visual');
+  const [customVisualPrompt, setCustomVisualPrompt] = useState('');
+  const [attachedFile, setAttachedFile] = useState<{data: string, mime: string, name: string} | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [loading, setLoading] = useState(false);
+  const [generatingPPT, setGeneratingPPT] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const tools = [
@@ -53,6 +63,21 @@ const TeachingHub: React.FC = () => {
     { id: 'EVIDENCE', label: 'Resumen Evidencia', icon: Microscope, placeholder: 'Pregunta clínica específica (PICO). ej. ¿Es superior la nefrectomía parcial robótica a la laparoscópica en T1b?' },
     { id: 'CLINICAL_CASE', label: 'Reto Clínico (Interactivo)', icon: Stethoscope, placeholder: 'Tema del caso (ej. Hematuria macroscópica)' },
   ];
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAttachedFile({
+          data: reader.result as string,
+          mime: file.type,
+          name: file.name
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleGenerate = async () => {
     setLoading(true);
@@ -70,11 +95,17 @@ const TeachingHub: React.FC = () => {
         TÍTULO: "${presTitle}"
         DURACIÓN: ${presDuration}
         AUDIENCIA: ${presAudience}
-        ESTILO VISUAL: ${presStyle}
+        ESTILO VISUAL BASE: ${presStyle}
+        INSTRUCCIONES VISUALES PERSONALIZADAS: ${customVisualPrompt || 'Seguir estilo base estándar.'}
+        ${attachedFile ? `CONTEXTO ADJUNTO: Utiliza el archivo '${attachedFile.name}' como FUENTE PRINCIPAL para extraer la data técnica, tablas y figuras para la presentación.` : ''}
         
         Por favor, estructura la respuesta diapositiva por diapositiva incluyendo sugerencias visuales.
         `;
-        const result = await generateTeachingContent(activeTool, prompt);
+        const result = await generateTeachingContent(
+            activeTool, 
+            prompt,
+            attachedFile ? { data: attachedFile.data, mimeType: attachedFile.mime } : undefined
+        );
         setGeneratedContent(result);
     } else {
         if (!inputContext) return;
@@ -83,6 +114,115 @@ const TeachingHub: React.FC = () => {
     }
     
     setLoading(false);
+  };
+
+  // --- PPTX GENERATOR LOGIC ---
+  const handleDownloadPPTX = async () => {
+    if (!generatedContent) return;
+    setGeneratingPPT(true);
+
+    try {
+        const pres = new PptxGenJS();
+        
+        // Metadata
+        pres.title = presTitle || "Presentación UroGenius";
+        pres.subject = "Urología";
+        pres.author = "UroGenius AI";
+
+        // Layout (16:9)
+        pres.layout = 'LAYOUT_16x9';
+
+        // 1. Parse Content
+        // The AI output follows [SLIDE] tags based on system instruction.
+        const rawSlides = generatedContent.split(/\[SLIDE\]/i).filter(s => s.trim().length > 10);
+        
+        if (rawSlides.length === 0) {
+            // Fallback if parsing fails: Just one slide with all text
+            const slide = pres.addSlide();
+            slide.addText("Resumen Generado", { x: 0.5, y: 0.5, fontSize: 24, bold: true, color: '363636' });
+            slide.addText(generatedContent.substring(0, 2000), { x: 0.5, y: 1.5, w: '90%', fontSize: 12, color: '666666' });
+        } else {
+             // Create slides
+            rawSlides.forEach((rawSlideText) => {
+                const slide = pres.addSlide();
+                
+                // Extract Title
+                const titleMatch = rawSlideText.match(/\[TITLE\]:(.*?)(?=\[|$)/i);
+                const title = titleMatch ? titleMatch[1].trim() : "Diapositiva";
+                
+                // Extract Content
+                const contentMatch = rawSlideText.match(/\[CONTENT\]:([\s\S]*?)(?=\[VISUAL\]|\[NOTES\]|\[DESIGN\]|\[|$)/i);
+                let content = contentMatch ? contentMatch[1].trim() : "";
+                
+                // Clean markdown bullets
+                const contentLines = content.split('\n')
+                    .map(line => line.trim())
+                    .filter(line => line.length > 0)
+                    .map(line => line.replace(/^[-*•]\s*/, '')); // Remove existing bullets for PPT bullets
+
+                // Extract Visuals/Design for notes or specialized box
+                const visualMatch = rawSlideText.match(/\[VISUAL\]:([\s\S]*?)(?=\[|$)/i);
+                const visualText = visualMatch ? visualMatch[1].trim() : "";
+
+                // Extract Notes
+                const notesMatch = rawSlideText.match(/\[NOTES\]:([\s\S]*?)(?=\[|$)/i);
+                const notes = notesMatch ? notesMatch[1].trim() : "";
+
+                // --- ADD TO SLIDE ---
+                
+                // 1. Title Bar
+                slide.addText(title, { 
+                    x: 0.5, y: 0.5, w: '90%', h: 0.8, 
+                    fontSize: 28, bold: true, color: '005b96', fontFace: 'Arial' 
+                });
+                
+                // 2. Main Content (Bullets)
+                if (contentLines.length > 0) {
+                    const textObjects = contentLines.map(line => ({ 
+                        text: line, 
+                        options: { bullet: true, breakLine: true, indentLevel: 0 } 
+                    }));
+                    
+                    slide.addText(textObjects, { 
+                        x: 0.5, y: 1.5, w: '60%', h: '70%', 
+                        fontSize: 18, color: '333333', lineSpacing: 32, fontFace: 'Arial'
+                    });
+                }
+
+                // 3. Visual Suggestion Box (Right side)
+                if (visualText) {
+                    slide.addText("Sugerencia Visual IA:", {
+                        x: 7.0, y: 1.5, w: '25%', h: 0.4,
+                        fontSize: 10, bold: true, color: '666666', fill: { color: 'F1F5F9' }
+                    });
+                    slide.addText(visualText, {
+                        x: 7.0, y: 2.0, w: '25%', h: 3.5,
+                        fontSize: 11, color: '475569', italic: true, valign: 'top',
+                        shape: pres.ShapeType.rect, fill: { color: 'F8FAFC' }, line: { color: 'CBD5E1', width: 1 }
+                    });
+                }
+
+                // 4. Footer
+                slide.addText(`UroGenius AI - ${new Date().toLocaleDateString()}`, {
+                    x: 0.5, y: 7.0, w: '90%', fontSize: 10, color: 'AAAAAA'
+                });
+
+                // 5. Speaker Notes
+                if (notes) {
+                    slide.addNotes(notes);
+                }
+            });
+        }
+
+        // Save
+        await pres.writeFile({ fileName: `UroGenius-${presTitle.replace(/\s+/g, '_') || 'Presentacion'}.pptx` });
+
+    } catch (e) {
+        console.error("PPT Gen Error", e);
+        alert("Hubo un error generando el archivo PPTX. Inténtelo de nuevo.");
+    } finally {
+        setGeneratingPPT(false);
+    }
   };
 
   const handleEvaluate = async () => {
@@ -131,6 +271,8 @@ const TeachingHub: React.FC = () => {
                     setActiveTool(tool.id as ToolType); 
                     setGeneratedContent(''); 
                     setInputContext('');
+                    setAttachedFile(null);
+                    setCustomVisualPrompt('');
                     if (tool.id === 'CLINICAL_CASE') resetCase();
                 }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-medium ${
@@ -257,14 +399,14 @@ const TeachingHub: React.FC = () => {
                         <div className="p-2 bg-purple-100 text-purple-700 rounded-lg"><Projector size={24}/></div>
                         <div>
                             <h3 className="text-xl font-bold text-slate-900">Diseñador de Presentaciones</h3>
-                            <p className="text-sm text-slate-500">Cree guiones estructurados, sugerencias visuales y contenido para diapositivas.</p>
+                            <p className="text-sm text-slate-500">Cree guiones estructurados y expórtelos a PowerPoint (.pptx).</p>
                         </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-sm font-bold text-slate-900 mb-1">Título de la Presentación</label>
+                                <label className="block text-sm font-bold text-slate-900 mb-1">Título de la Ponencia</label>
                                 <input 
                                     type="text" 
                                     value={presTitle}
@@ -298,19 +440,66 @@ const TeachingHub: React.FC = () => {
                                     />
                                 </div>
                             </div>
-                            <div>
-                                <label className="block text-sm font-bold text-slate-900 mb-1">Estilo Visual</label>
-                                <select 
-                                    value={presStyle}
-                                    onChange={(e) => setPresStyle(e.target.value)}
-                                    className="w-full p-3 border border-slate-300 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-purple-500 outline-none"
-                                >
-                                    <option>Científico y Riguroso</option>
-                                    <option>Visual e Infográfico</option>
-                                    <option>Austero y Minimalista</option>
-                                    <option>Didáctico para Pacientes</option>
-                                </select>
+                            
+                            <div className="pt-2">
+                                <label className="block text-sm font-bold text-slate-900 mb-2">Archivo Base (Opcional)</label>
+                                {!attachedFile ? (
+                                  <div 
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="border-2 border-dashed border-slate-300 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer hover:border-purple-500 hover:bg-purple-50 transition-all group"
+                                  >
+                                    <FileUp className="text-slate-400 group-hover:text-purple-600 mb-2" size={24} />
+                                    <p className="text-xs font-bold text-slate-600">Clic para adjuntar PDF o JPG</p>
+                                    <p className="text-[10px] text-slate-400">La IA leerá el documento para crear la presentación</p>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-between p-3 bg-purple-50 border border-purple-200 rounded-xl">
+                                    <div className="flex items-center gap-2 overflow-hidden">
+                                      <FileCheck className="text-purple-600 flex-shrink-0" size={18} />
+                                      <div className="truncate">
+                                        <p className="text-xs font-bold text-purple-900 truncate">{attachedFile.name}</p>
+                                        <p className="text-[10px] text-purple-600 uppercase">{attachedFile.mime.split('/')[1]}</p>
+                                      </div>
+                                    </div>
+                                    <button 
+                                      onClick={() => setAttachedFile(null)}
+                                      className="p-1 hover:bg-white text-purple-400 hover:text-red-500 rounded-lg transition-colors"
+                                    >
+                                      <X size={16} />
+                                    </button>
+                                  </div>
+                                )}
+                                <input 
+                                  type="file" 
+                                  ref={fileInputRef} 
+                                  className="hidden" 
+                                  accept=".pdf,image/jpeg,image/png,image/webp"
+                                  onChange={handleFileUpload} 
+                                />
                             </div>
+
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <label className="block text-sm font-bold text-slate-900 mb-2">Estilo Visual Personalizado</label>
+                                <div className="space-y-2">
+                                    <select 
+                                        value={presStyle}
+                                        onChange={(e) => setPresStyle(e.target.value)}
+                                        className="w-full p-2 text-xs border border-slate-300 rounded-lg bg-white text-slate-900 focus:ring-1 focus:ring-purple-500 outline-none"
+                                    >
+                                        <option>Científico y Riguroso</option>
+                                        <option>Visual e Infográfico</option>
+                                        <option>Austero y Minimalista</option>
+                                        <option>Didáctico para Pacientes</option>
+                                    </select>
+                                    <textarea
+                                        value={customVisualPrompt}
+                                        onChange={(e) => setCustomVisualPrompt(e.target.value)}
+                                        placeholder="Instrucciones visuales libres (ej. 'Usa fondo oscuro, esquema de colores azul neón, minimalista con iconos grandes...')"
+                                        className="w-full p-3 border border-slate-300 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none resize-none text-xs h-20"
+                                    />
+                                </div>
+                            </div>
+
                             <button
                                 onClick={handleGenerate}
                                 disabled={loading || !presTitle}
@@ -322,20 +511,29 @@ const TeachingHub: React.FC = () => {
                         </div>
 
                         {/* Result Preview Area for Presentation */}
-                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 overflow-y-auto max-h-[500px] min-h-[400px]">
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 overflow-y-auto max-h-[600px] min-h-[400px]">
                             {loading ? (
                                 <div className="h-full flex flex-col items-center justify-center space-y-4 opacity-70">
                                     <Loader2 className="w-10 h-10 animate-spin text-purple-600" />
-                                    <p className="text-slate-500 animate-pulse">Diseñando diapositivas y guion...</p>
+                                    <p className="text-slate-500 animate-pulse">Analizando contenido y diseñando diapositivas...</p>
+                                    {attachedFile && <p className="text-xs text-purple-600 font-bold">Leyendo archivo adjunto...</p>}
                                 </div>
                             ) : generatedContent ? (
                                 <div className="prose prose-slate max-w-none prose-sm">
-                                    <div className="flex justify-end mb-2">
+                                    <div className="flex justify-end mb-4 gap-2 sticky top-0 bg-slate-50/95 backdrop-blur py-2 border-b border-slate-200 z-10">
                                         <button 
                                             onClick={() => copyToClipboard(generatedContent)}
-                                            className="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-1 font-bold bg-purple-50 px-2 py-1 rounded"
+                                            className="text-xs text-slate-600 hover:text-purple-800 flex items-center gap-1 font-bold bg-white border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-purple-50 transition-colors"
                                         >
-                                            {copied ? <Check size={12}/> : <Copy size={12}/>} {copied ? 'Copiado' : 'Copiar Guion'}
+                                            {copied ? <Check size={14}/> : <Copy size={14}/>} {copied ? 'Copiado' : 'Copiar Texto'}
+                                        </button>
+                                        <button 
+                                            onClick={handleDownloadPPTX}
+                                            disabled={generatingPPT}
+                                            className="text-xs text-white flex items-center gap-1 font-bold bg-purple-600 hover:bg-purple-700 px-3 py-1.5 rounded-lg transition-colors shadow-sm disabled:opacity-50"
+                                        >
+                                            {generatingPPT ? <Loader2 size={14} className="animate-spin"/> : <Download size={14}/>} 
+                                            Descargar PPTX <span className="bg-white/20 px-1 rounded text-[9px] uppercase">Pro</span>
                                         </button>
                                     </div>
                                     <ReactMarkdown>{generatedContent}</ReactMarkdown>
@@ -343,7 +541,7 @@ const TeachingHub: React.FC = () => {
                             ) : (
                                 <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-50 text-center px-4">
                                     <Projector className="w-16 h-16 mb-4" />
-                                    <p>Configure los detalles de la presentación y genere su guion completo.</p>
+                                    <p>Configure los detalles y adjunte documentos para generar su presentación.</p>
                                 </div>
                             )}
                         </div>

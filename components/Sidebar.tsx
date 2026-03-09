@@ -26,7 +26,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView }) => {
   const menuItems = [
     { id: View.DASHBOARD, label: 'Panel de Control', icon: LayoutDashboard },
     { id: View.SCHEDULER, label: 'Agenda y Recordatorios', icon: CalendarClock },
-    { id: View.EVIDENCE, label: 'Evidence AI', icon: Scale },
+    { id: View.AI_CENTER, label: 'Centro de Inteligencia', icon: Scale },
     { id: View.CLINICAL_NOTES, label: 'Asistente Clínico', icon: FileText },
     { id: View.VISUAL_STUDIO, label: 'Visual Studio', icon: Workflow },
     { id: View.LIVE_CONSULT, label: 'Consultor en Vivo', icon: Mic },
@@ -34,7 +34,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView }) => {
     { id: View.CALCULATORS, label: 'Calculadoras', icon: Calculator },
     { id: View.RESEARCH, label: 'Investigación', icon: Search },
     { id: View.TEACHING, label: 'Docencia & I+D', icon: Library },
-    { id: View.CHAT, label: 'Chat Urólogo IA', icon: MessageSquareText },
   ];
 
   return (
